@@ -4,74 +4,52 @@ use schema reporting;
 
 -- ============ DIM: VEHICLES ============
 create or replace view dim_vehicle as
-select
-    vehicle_id,
-    vin,
-    registration_no,
-    make,
-    model,
-    year,
-    depot,
-    fuel_type,
-    odometer_km,
-    status,
-    last_updated
-from fleet_db.setup_schema.vehicles_processed;
+select bvehicle_id,vin,registration_no,make,model,year,depot,
+    fuel_type,odometer_km,status,last_updated from fleet_db.setup_schema.vehicles_processed;
 
--- ============ FACT: TELEMETRY (event grain) ============
+-- ============ FACT: TELEMETRY  ============
 create or replace view fct_telemetry as
-select
-    vehicle_id,
-    event_ts,
-    date(event_ts)         as event_date,
-    speed_kmph,
-    engine_temp_c,
-    fuel_pct,
-    rpm,
-    harsh_braking,
-    case when engine_temp_c > 105 then 1 else 0 end   as high_temp_flag,
-    case when fuel_pct < 15 then 1 else 0 end          as low_fuel_flag
+select vehicle_id,event_ts,date(event_ts) as event_date,speed_kmph,engine_temp_c,
+    fuel_pct,rpm,harsh_braking,
+    case 
+        when engine_temp_c > 105 then 1 
+    else 0 end   as high_temp_flag,
+    case 
+        when fuel_pct < 15 then 1 
+        else 0 end as low_fuel_flag
 from fleet_db.setup_schema.telemetry_processed;
 
--- ============ FACT: TELEMETRY DAILY (pre-aggregated, lighter for Power BI Import) ============
+-- ============ FACT: TELEMETRY DAILY============
 create or replace view fct_telemetry_daily as
 select
     vehicle_id,
-    date(event_ts)                    as event_date,
-    avg(speed_kmph)                    as avg_speed_kmph,
-    max(speed_kmph)                    as max_speed_kmph,
-    avg(engine_temp_c)                 as avg_engine_temp_c,
-    max(engine_temp_c)                 as max_engine_temp_c,
-    avg(fuel_pct)                      as avg_fuel_pct,
-    min(fuel_pct)                      as min_fuel_pct,
+    date(event_ts)  as event_date,
+    avg(speed_kmph) as avg_speed_kmph,
+    max(speed_kmph) as max_speed_kmph,
+    avg(engine_temp_c) as avg_engine_temp_c,
+    max(engine_temp_c) as max_engine_temp_c,
+    avg(fuel_pct) as avg_fuel_pct,
+    min(fuel_pct) as min_fuel_pct,
     sum(case when harsh_braking then 1 else 0 end)   as harsh_braking_events,
     sum(case when engine_temp_c > 105 then 1 else 0 end)   as high_temp_events
 from fleet_db.setup_schema.telemetry_processed
 group by vehicle_id, date(event_ts);
 
--- ============ FACT: MAINTENANCE (work order grain) ============
+-- ============ FACT: MAINTENANCE  ============
 create or replace view fct_maintenance as
-select
-    work_order_id,
-    vehicle_id,
-    service_date,
-    work_type,
-    technician,
-    labour_hours,
-    downtime_hours,
-    parts_cost_inr,
-    notes
+select work_order_id,vehicle_id,service_date,work_type,technician,
+    labour_hours,downtime_hours,parts_cost_inr,notes
 from fleet_db.setup_schema.maintenance_processed;
 
 -- ============ DATE DIMENSION ============
 create or replace view dim_date as
 select
     date_key,
-    year(date_key)                     as year,
-    month(date_key)                    as month,
-    monthname(date_key)                as month_name,
-    quarter(date_key)                  as quarter,
-    dayname(date_key)                  as day_name,
+    year(date_key) as year,
+    month(date_key) as month,
+    monthname(date_key) as month_name,
+    quarter(date_key) as quarter,
+    dayname(date_key) as day_name,
     date_trunc('week', date_key)::date as week_start
 from (
     select event_date as date_key from fct_telemetry_daily
@@ -79,7 +57,7 @@ from (
     select service_date as date_key from fct_maintenance
 );
 
--- ============ ACTIVE ALERTS VIEW (for dashboard Page 4) ============
+-- ============ ACTIVE ALERTS VIEW  ============
 create or replace view vw_active_alerts as
 select
     t.vehicle_id, v.depot, v.make, v.model,
@@ -93,7 +71,6 @@ join dim_vehicle v on t.vehicle_id = v.vehicle_id
 where t.max_engine_temp_c > 105 or t.min_fuel_pct < 15 or t.harsh_braking_events >= 4
 qualify row_number() over (partition by t.vehicle_id order by t.event_date desc) = 1;
 
--- ============ SANITY CHECKS — run these after, confirm none are empty/stale ============
 select max(event_ts) from fleet_db.setup_schema.telemetry_processed;
 select * from dim_vehicle limit 10;
 select * from fct_telemetry_daily limit 10;
@@ -169,12 +146,12 @@ order by event_date desc;
 create or replace view dim_date as
 select
     date_key,
-    year(date_key)                     as year,
-    month(date_key)                    as month,
-    monthname(date_key)                as month_name,
-    quarter(date_key)                  as quarter,
-    dayname(date_key)                  as day_name,
-    date_trunc('week', date_key)::date as week_start
+    year(date_key)  as year,
+    month(date_key)  as month,
+    monthname(date_key) as month_name,
+    quarter(date_key) as quarter,
+    dayname(date_key) as day_name,
+    date_trunc('week', date_key) as week_start
 from (
     select event_date as date_key from fct_telemetry_daily where event_date is not null
     union
