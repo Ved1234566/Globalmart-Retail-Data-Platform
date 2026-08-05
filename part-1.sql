@@ -203,11 +203,6 @@ file_format = (format_name = global_data_mart.setup_Schema.json_format)
 pattern = '.*[.]json';
 
 -- ============ streams ============
--- FIX: stream_pos_new now points DIRECTLY at pos_transactions (Bronze),
--- not at a disconnected one-time snapshot. The old "pos_transactions_raw as
--- select * from pos_transactions" table has been REMOVED — it was a frozen
--- copy that nothing ever wrote to again, so the stream built on it never
--- saw new data.
 
 create or replace stream global_data_mart.setup_Schema.stream_pos
 on table global_data_mart.setup_Schema.pos_transactions;
