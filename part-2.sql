@@ -152,15 +152,7 @@ create or replace table global_data_mart.setup_schema.stg_store_updates (
     store_city  string
 );
  
--- sample change: pick one real store_id from your data and give it a new city
--- insert into global_data_mart.setup_schema.stg_store_updates (store_id, store_name, store_city)
--- select store_id, store_name, 'Bursa' as store_city   -- <-- new city value
--- from global_data_mart.setup_schema.dim_store_scd2
--- where store_id = 'STR_001'
---   and is_current = true;
- 
 
- 
 merge into global_data_mart.setup_schema.dim_store_scd2 as tgt
 using global_data_mart.setup_schema.stg_store_updates as src
     on tgt.store_id = src.store_id and tgt.is_current = true
