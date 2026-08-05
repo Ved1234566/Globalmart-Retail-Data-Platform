@@ -1,8 +1,3 @@
--- Global Data Mart gold layer: materialized views, gross margin, and dynamic tables
--- Co-authored with CoCo
--- Global Data Mart — GOLD LAYER (missing pieces)
--- Run AFTER the ingestion script (Bronze/Silver setup) and the dimensional model script
--- (dim_date, dim_store, dim_product, fct_daily_sales) have already been run once.
 
 use database global_data_mart;
 use warehouse compute_wh;
@@ -48,8 +43,7 @@ select transaction_date as date_key, store_id, product_sku, category,
 from global_data_mart.setup_schema.pos_transactions
 group by transaction_date, store_id, product_sku, category;
 
--- Activation order matters: resume CHILD first, then ROOT last,
--- otherwise the child never runs.
+
 alter task global_data_mart.setup_schema.task_refresh_sales_buffer resume;
 alter task global_data_mart.setup_schema.task_pos_incremental resume;
 
@@ -77,7 +71,7 @@ select * from global_data_mart.setup_schema.mv_category_by_region order by total
 
 
 -- ============================================================
--- 3. Gross Margin view (POS revenue vs ERP cost)
+-- 3. Gross Margin view 
 -- ============================================================
 
 create or replace view global_data_mart.setup_schema.v_gross_margin as
@@ -130,8 +124,8 @@ select * from global_data_mart.setup_schema.v_alert_sales_impact order by alert_
 -- DIMENSION TABLE 
  
 create or replace table global_data_mart.setup_schema.dim_store_scd2 (
-    store_key       int autoincrement primary key,  -- surrogate key, one per version
-    store_id        string,                          -- natural/business key, repeats across versions
+    store_key       int autoincrement primary key,  -- surrogate key
+    store_id        string,                        
     store_name      string,
     city_name       string,
     effective_date  date,
@@ -162,11 +156,11 @@ create or replace table global_data_mart.setup_schema.stg_store_updates (
 );
  
 -- sample change: pick one real store_id from your data and give it a new city
-insert into global_data_mart.setup_schema.stg_store_updates (store_id, store_name, store_city)
-select store_id, store_name, 'Bursa' as store_city   -- <-- new city value
-from global_data_mart.setup_schema.dim_store_scd2
-where store_id = 'STR_001'
-  and is_current = true;
+-- insert into global_data_mart.setup_schema.stg_store_updates (store_id, store_name, store_city)
+-- select store_id, store_name, 'Bursa' as store_city   -- <-- new city value
+-- from global_data_mart.setup_schema.dim_store_scd2
+-- where store_id = 'STR_001'
+--   and is_current = true;
  
 
  
@@ -177,8 +171,6 @@ when matched and tgt.city_name != src.store_city then
     update set
         tgt.end_date = current_date(),
         tgt.is_current = false;
- 
-
  
 insert into global_data_mart.setup_schema.dim_store_scd2
     (store_id, store_name, city_name, effective_date, end_date, is_current)
