@@ -53,10 +53,6 @@ group by transaction_date, store_id, product_sku, category;
 alter task global_data_mart.setup_schema.task_refresh_sales_buffer resume;
 alter task global_data_mart.setup_schema.task_pos_incremental resume;
 
--- Verify tasks are running:
--- select name, state, scheduled_time, error_message
--- from table(information_schema.task_history())
--- order by scheduled_time desc;
 
 
 -- ============================================================
@@ -82,8 +78,6 @@ select * from global_data_mart.setup_schema.mv_category_by_region order by total
 
 -- ============================================================
 -- 3. Gross Margin view (POS revenue vs ERP cost)
---    Note: joins on store_id + category, NOT product_sku —
---    POS and ERP use different SKU schemes by design.
 -- ============================================================
 
 create or replace view global_data_mart.setup_schema.v_gross_margin as
@@ -103,7 +97,6 @@ select * from global_data_mart.setup_schema.v_gross_margin order by gross_margin
 
 -- ============================================================
 -- 4. IoT Alerts -> Sales Impact
---    LATERAL FLATTEN on the alerts[] array (present on ~5% of events)
 -- ============================================================
 
 create or replace view global_data_mart.setup_schema.v_iot_alerts as
@@ -130,3 +123,81 @@ order by alert_date;
 
 select * from global_data_mart.setup_schema.v_iot_alerts limit 20;
 select * from global_data_mart.setup_schema.v_alert_sales_impact order by alert_date;
+
+-------------------------------------------------------------------------------------------------------------------
+--========= SCD TYPE - 2 ===================-----
+ 
+-- DIMENSION TABLE 
+ 
+create or replace table global_data_mart.setup_schema.dim_store_scd2 (
+    store_key       int autoincrement primary key,  -- surrogate key, one per version
+    store_id        string,                          -- natural/business key, repeats across versions
+    store_name      string,
+    city_name       string,
+    effective_date  date,
+    end_date        date,
+    is_current      boolean
+);
+ 
+-- ============================================================
+
+ 
+insert into global_data_mart.setup_schema.dim_store_scd2
+    (store_id, store_name, city_name, effective_date, end_date, is_current)
+select distinct store_id, store_name, store_city,
+    '2026-01-01'::date as effective_date,
+    null as end_date,
+    true as is_current
+from global_data_mart.setup_schema.pos_transactions;
+ 
+select * from global_data_mart.setup_schema.dim_store_scd2 order by store_id;
+ 
+ng)
+-- ============================================================
+ 
+create or replace table global_data_mart.setup_schema.stg_store_updates (
+    store_id    string,
+    store_name  string,
+    store_city  string
+);
+ 
+-- sample change: pick one real store_id from your data and give it a new city
+insert into global_data_mart.setup_schema.stg_store_updates (store_id, store_name, store_city)
+select store_id, store_name, 'Bursa' as store_city   -- <-- new city value
+from global_data_mart.setup_schema.dim_store_scd2
+where store_id = 'STR_001'
+  and is_current = true;
+ 
+
+ 
+merge into global_data_mart.setup_schema.dim_store_scd2 as tgt
+using global_data_mart.setup_schema.stg_store_updates as src
+    on tgt.store_id = src.store_id and tgt.is_current = true
+when matched and tgt.city_name != src.store_city then
+    update set
+        tgt.end_date = current_date(),
+        tgt.is_current = false;
+ 
+
+ 
+insert into global_data_mart.setup_schema.dim_store_scd2
+    (store_id, store_name, city_name, effective_date, end_date, is_current)
+select src.store_id, src.store_name, src.store_city,
+    current_date() as effective_date,
+    null as end_date,
+    true as is_current
+from global_data_mart.setup_schema.stg_store_updates src
+join global_data_mart.setup_schema.dim_store_scd2 tgt
+    on src.store_id = tgt.store_id
+where tgt.is_current = false
+  and tgt.end_date = current_date();
+ 
+
+ 
+select * from global_data_mart.setup_schema.dim_store_scd2
+where store_id = 'STR_001'
+order by effective_date;
+ 
+select * from global_data_mart.setup_schema.dim_store_scd2
+order by store_id, effective_date;
+ 
