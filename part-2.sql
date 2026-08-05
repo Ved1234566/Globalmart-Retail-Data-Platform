@@ -2,10 +2,7 @@
 use database global_data_mart;
 use warehouse compute_wh;
 
--- ============================================================
--- 1. Transient buffer + incremental refresh task chain
---    (Silver -> Gold, event-driven instead of full rebuild)
--- ============================================================
+
 
 create or replace transient table global_data_mart.setup_schema.daily_sales_buffer as
 select transaction_date as date_key, store_id, product_sku, category,
