@@ -87,8 +87,6 @@ group by p.store_id, p.store_name, p.transaction_date;
 
 -- FACT AND DIMENSION TABLE
 
--- ============ SNOWFLAKE SCHEMA — normalized dimensions ============
-
 -- dim_region (top of the store hierarchy)
 create or replace table global_data_mart.setup_schema.dim_region as
 select distinct store_region as region_name
