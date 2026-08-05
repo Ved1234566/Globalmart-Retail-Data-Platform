@@ -337,10 +337,7 @@ select
     quantity_on_hand, reorder_level, max_stock_level, last_received_date
 from global_data_mart.setup_Schema.stream_erp_inventory;
 
--- FIX: iot_task now inserts only the (data) column, matching the stream's
--- actual usable output — select * on a stream also returns METADATA$ACTION,
--- METADATA$ISUPDATE, METADATA$ROW_ID, which don't match iot_events_processed's
--- 2-column shape and would fail the insert.
+
 create or replace task global_data_mart.setup_Schema.iot_task
 warehouse = compute_wh
 schedule = '5 minute'
