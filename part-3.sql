@@ -1,5 +1,5 @@
--- Global Data Mart queries, views, and dimensional model tables
--- Co-authored with CoCo
+-- Global Data Mart queries, views, and dimensional  tables
+
 use database global_data_mart;
 
 create or replace table global_data_mart.setup_schema.test_1
@@ -46,11 +46,7 @@ from global_data_mart.setup_schema.pos_transactions
 group by transaction_date, store_id, store_name, store_city, store_region, category
 order by transaction_date, store_id, category;
 
---------------------------------------------------------------------------------------
--- NOTE: iot_events already exists as a TABLE (built in the ingestion script).
--- Removed the duplicate "create or replace view iot_events" block that was here —
--- it conflicted with the existing table and would fail with
--- "IOT_EVENTS already exists as TABLE".
+
 --------------------------------------------------------------------------------------
 
 create or replace view global_data_mart.setup_schema.store_daily_revenue_sensors as
@@ -108,39 +104,39 @@ create or replace table global_data_mart.setup_schema.dim_store as
 select distinct store_id, store_name, store_city as city_name
 from global_data_mart.setup_schema.pos_transactions;
 
--- dim_category (top of the product hierarchy)
+-- dim_category
 create or replace table global_data_mart.setup_schema.dim_category as
 select distinct category as category_name
 from global_data_mart.setup_schema.pos_transactions;
 
--- dim_subcategory (references category)
+-- dim_subcategory 
 create or replace table global_data_mart.setup_schema.dim_subcategory as
 select distinct subcategory as subcategory_name, category as category_name
 from global_data_mart.setup_schema.pos_transactions;
 
--- dim_product (references subcategory, NOT category directly)
+-- dim_product 
 create or replace table global_data_mart.setup_schema.dim_product as
 select distinct product_sku, product_name, subcategory as subcategory_name
 from global_data_mart.setup_schema.pos_transactions;
 
--- dim_year (top of the date hierarchy)
+-- dim_year 
 create or replace table global_data_mart.setup_schema.dim_year as
 select distinct year(transaction_date) as year
 from global_data_mart.setup_schema.pos_transactions;
 
--- dim_month (references year)
+-- dim_month 
 create or replace table global_data_mart.setup_schema.dim_month as
 select distinct month(transaction_date) as month, year(transaction_date) as year
 from global_data_mart.setup_schema.pos_transactions;
 
--- dim_date (references month, NOT year directly)
+-- dim_date 
 create or replace table global_data_mart.setup_schema.dim_date as
 select distinct transaction_date as date_key,
     day(transaction_date) as day,
     month(transaction_date) as month
 from global_data_mart.setup_schema.pos_transactions;
 
--- fct_daily_sales (unchanged — grain and measures stay the same)
+-- fct_daily_sales
 create or replace table global_data_mart.setup_schema.fct_daily_sales as
 select transaction_date as date_key, store_id, product_sku, category,
     count(*) as total_transactions,
