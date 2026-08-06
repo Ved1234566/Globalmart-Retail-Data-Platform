@@ -232,17 +232,13 @@ create or replace external table global_data_mart.setup_Schema.ext_pos_transacti
     product_sku string as (value:c9::string),
     total_amount float as (value:c15::float)
 )
-partition by (transaction_date)
 location = @global_data_mart.setup_Schema.csv_stage
 auto_refresh = true
 file_format = global_data_mart.setup_Schema.csv_format;
 
 select * from global_data_mart.setup_Schema.ext_pos_transactions limit 20;
 
-select *
-from table(information_schema.external_table_files(
-    table_name => 'global_data_mart.setup_Schema.ext_pos_transactions'
-));
+--====EXTERNAL TABLES====---
 
 create or replace external table global_data_mart.setup_Schema.ext_erp_orders (
     order_id string as (value:order_id::string),
@@ -251,7 +247,6 @@ create or replace external table global_data_mart.setup_Schema.ext_erp_orders (
     category string as (value:category::string),
     total_cost float as (value:total_cost::float)
 )
-partition by (order_date)
 location = @global_data_mart.setup_Schema.parquet_stage
 auto_refresh = true
 file_format = global_data_mart.setup_Schema.parquet_format;
@@ -262,7 +257,6 @@ create or replace external table global_data_mart.setup_Schema.ext_iot_events (
     event_date date as (to_date(value:timestamp::string)),
     alert_type string as (value:alert_type::string)
 )
-partition by (event_date)
 location = @global_data_mart.setup_Schema.json_stage
 auto_refresh = true
 file_format = global_data_mart.setup_Schema.json_format;
@@ -273,8 +267,16 @@ create or replace external table global_data_mart.setup_Schema.ext_erp_inventory
     snapshot_date date as (value:snapshot_date::date),
     quantity_on_hand int as (value:quantity_on_hand::int)
 )
-partition by (snapshot_date)
 location = @global_data_mart.setup_Schema.parquet_stage
 auto_refresh = true
 file_format = global_data_mart.setup_Schema.parquet_format;
 
+-- alter external table global_data_mart.setup_Schema.ext_pos_transactions
+-- add partition(transaction_date='2026-01-01')
+-- location = 's3://bigdata1ved/CSV_FILES/2026-01-01/';
+
+-- alter external table global_data_mart.setup_Schema.ext_pos_transactions
+-- add partition(transaction_date='2026-01-02')
+-- location = 's3://bigdata1ved/CSV_FILES/2026-01-02/';
+
+-- select * from global_data_mart.setup_Schema.ext_pos_transactions limit 20;
