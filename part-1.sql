@@ -13,6 +13,7 @@ use warehouse compute_wh;
 -- enabled = true
 -- storage_aws_role_arn = 'arn:aws:iam::363437154840:role/Globla_Mart'
 -- storage_allowed_locations = ('s3://bigdata1ved/');
+
 -- desc integration s3_int;
 
 create or replace file format global_data_mart.setup_Schema.json_format
@@ -220,164 +221,60 @@ on table global_data_mart.setup_Schema.erp_inventory;
 create or replace stream global_data_mart.setup_Schema.stream_iot_events
 on table global_data_mart.setup_Schema.iot_events_raw;
 
--- ============ processed tables (SILVER LAYER) ============
 
-create or replace table global_data_mart.setup_Schema.iot_events_processed (
-    data variant,
-    processed_ts timestamp_ntz default current_timestamp()
-);
+-- ============ external table (partitioned) ============
 
-create or replace table global_data_mart.setup_Schema.pos_transactions_processed (
-    transaction_id string,
-    store_id string,
-    store_name string,
-    store_city string,
-    store_region string,
-    cashier_id string,
-    customer_id string,
-    transaction_date date,
-    transaction_time string,
-    product_sku string,
-    product_name string,
-    category string,
-    subcategory string,
-    quantity int,
-    unit_price float,
-    discount_pct int,
-    total_amount float,
-    payment_method string,
-    loyalty_points int
-);
-
-create or replace table global_data_mart.setup_Schema.erp_orders_processed (
-    order_id string,
-    order_date timestamp_ntz,
-    store_id string,
-    store_city string,
-    supplier_id string,
-    supplier_name string,
-    supplier_city string,
-    product_sku string,
-    category string,
-    quantity_ordered int,
-    quantity_received int,
-    unit_cost float,
-    total_cost float,
-    order_status string,
-    expected_delivery date,
-    actual_delivery date,
-    warehouse_id string,
-    lead_time_days int,
-    is_late boolean
-);
-
-create or replace table global_data_mart.setup_Schema.erp_inventory_processed (
-    snapshot_date date,
-    store_id string,
-    warehouse_id string,
-    product_sku string,
-    category string,
-    quantity_on_hand int,
-    reorder_level int,
-    max_stock_level int,
-    last_received_date date
-);
-
--- ============ tasks (BRONZE -> SILVER) ============
-
-create or replace task global_data_mart.setup_Schema.pos_task
-warehouse = compute_wh
-schedule = '5 minute'
-as
-insert into global_data_mart.setup_Schema.pos_transactions_processed (
-    transaction_id, store_id, store_name, store_city, store_region,
-    cashier_id, customer_id, transaction_date, transaction_time,
-    product_sku, product_name, category, subcategory, quantity,
-    unit_price, discount_pct, total_amount, payment_method, loyalty_points
+create or replace external table global_data_mart.setup_Schema.ext_pos_transactions (
+    transaction_id string as (value:c1::string),
+    store_id string as (value:c2::string),
+    store_region string as (value:c5::string),
+    transaction_date date as (value:c8::date),
+    product_sku string as (value:c9::string),
+    total_amount float as (value:c15::float)
 )
-select
-    transaction_id, store_id, store_name, store_city, store_region,
-    cashier_id, customer_id, transaction_date, transaction_time,
-    product_sku, product_name, category, subcategory, quantity,
-    unit_price, discount_pct, total_amount, payment_method, loyalty_points
-from global_data_mart.setup_Schema.stream_pos_new;
+partition by (transaction_date)
+location = @global_data_mart.setup_Schema.csv_stage
+auto_refresh = true
+file_format = global_data_mart.setup_Schema.csv_format;
 
-create or replace task global_data_mart.setup_Schema.erp_orders_task
-warehouse = compute_wh
-schedule = '5 minute'
-as
-insert into global_data_mart.setup_Schema.erp_orders_processed (
-    order_id, order_date, store_id, store_city, supplier_id, supplier_name,
-    supplier_city, product_sku, category, quantity_ordered, quantity_received,
-    unit_cost, total_cost, order_status, expected_delivery, actual_delivery,
-    warehouse_id, lead_time_days, is_late
-)
-select
-    order_id, order_date, store_id, store_city, supplier_id, supplier_name,
-    supplier_city, product_sku, category, quantity_ordered, quantity_received,
-    unit_cost, total_cost, order_status, expected_delivery, actual_delivery,
-    warehouse_id, lead_time_days, is_late
-from global_data_mart.setup_Schema.stream_erp_orders;
-
-create or replace task global_data_mart.setup_Schema.erp_inventory_task
-warehouse = compute_wh
-schedule = '5 minute'
-as
-insert into global_data_mart.setup_Schema.erp_inventory_processed (
-    snapshot_date, store_id, warehouse_id, product_sku, category,
-    quantity_on_hand, reorder_level, max_stock_level, last_received_date
-)
-select
-    snapshot_date, store_id, warehouse_id, product_sku, category,
-    quantity_on_hand, reorder_level, max_stock_level, last_received_date
-from global_data_mart.setup_Schema.stream_erp_inventory;
-
-
-create or replace task global_data_mart.setup_Schema.iot_task
-warehouse = compute_wh
-schedule = '5 minute'
-as
-insert into global_data_mart.setup_Schema.iot_events_processed (data)
-select data from global_data_mart.setup_Schema.stream_iot_events;
-
-alter task global_data_mart.setup_Schema.pos_task suspend;
-alter task global_data_mart.setup_Schema.erp_orders_task suspend;
-alter task global_data_mart.setup_Schema.erp_inventory_task suspend;
-alter task global_data_mart.setup_Schema.iot_task suspend;
-
-alter task global_data_mart.setup_Schema.pos_task resume;
-alter task global_data_mart.setup_Schema.erp_orders_task resume;
-alter task global_data_mart.setup_Schema.erp_inventory_task resume;
-alter task global_data_mart.setup_Schema.iot_task resume;
-
--- ============ checks ============
+select * from global_data_mart.setup_Schema.ext_pos_transactions limit 20;
 
 select *
-from global_data_mart.setup_Schema.pos_transactions
-at(timestamp => dateadd(minute, -1, current_timestamp()));
-
-describe table global_data_mart.setup_Schema.erp_orders;
-describe table global_data_mart.setup_Schema.erp_inventory;
-describe table global_data_mart.setup_Schema.iot_events_raw;
-
-select * from global_data_mart.setup_Schema.pos_transactions;
-select * from global_data_mart.setup_Schema.erp_orders;
-select * from global_data_mart.setup_Schema.erp_inventory;
-select * from global_data_mart.setup_Schema.iot_events;
-
-
-
--- stores with high sales
-select p.store_id, round(sum(p.total_amount), 2) as revenue, round(avg(e.battery_pct)) as avg_sensor_battery
-from global_data_mart.setup_Schema.pos_transactions p
-join global_data_mart.setup_Schema.iot_events e on p.store_id = e.store_id
-group by p.store_id
-order by revenue desc;
-
-
-
-select *
-from table(information_schema.copy_history(
-    table_name => 'global_data_mart.setup_Schema.pos_transactions',
-    start_time => dateadd(hours, -24, current_timestamp())
+from table(information_schema.external_table_files(
+    table_name => 'global_data_mart.setup_Schema.ext_pos_transactions'
 ));
+
+create or replace external table global_data_mart.setup_Schema.ext_erp_orders (
+    order_id string as (value:order_id::string),
+    store_id string as (value:store_id::string),
+    order_date date as (value:order_date::date),
+    category string as (value:category::string),
+    total_cost float as (value:total_cost::float)
+)
+partition by (order_date)
+location = @global_data_mart.setup_Schema.parquet_stage
+auto_refresh = true
+file_format = global_data_mart.setup_Schema.parquet_format;
+
+create or replace external table global_data_mart.setup_Schema.ext_iot_events (
+    event_id string as (value:event_id::string),
+    store_id string as (value:store_id::string),
+    event_date date as (to_date(value:timestamp::string)),
+    alert_type string as (value:alert_type::string)
+)
+partition by (event_date)
+location = @global_data_mart.setup_Schema.json_stage
+auto_refresh = true
+file_format = global_data_mart.setup_Schema.json_format;
+
+create or replace external table global_data_mart.setup_Schema.ext_erp_inventory (
+    store_id string as (value:store_id::string),
+    product_sku string as (value:product_sku::string),
+    snapshot_date date as (value:snapshot_date::date),
+    quantity_on_hand int as (value:quantity_on_hand::int)
+)
+partition by (snapshot_date)
+location = @global_data_mart.setup_Schema.parquet_stage
+auto_refresh = true
+file_format = global_data_mart.setup_Schema.parquet_format;
+
