@@ -24,6 +24,9 @@ from global_data_mart.setup_schema.pos_transactions;
 
 select greatest(-1,0) < 100;
 
+select DATEADD(day , row_number()over(order by null)-1 ,'2023-01-01') as generator_date
+from table(generator(rowcount=>5));
+
 select count(*) from global_data_mart.setup_schema.pos_transactions;
 
 -- -------------------------------------------
@@ -142,3 +145,141 @@ select transaction_date as date_key, store_id, product_sku, category,
     sum(total_amount) as total_revenue
 from global_data_mart.setup_schema.pos_transactions
 group by transaction_date, store_id, product_sku, category;
+
+
+
+-- ============================================================
+-- fct_gross_margin — Gold layer fact table
+-- ============================================================
+
+create or replace table global_data_mart.mart.fct_gross_margin (
+    store_id            varchar(10),                              
+    store_name          varchar(100),
+    store_city          varchar(50),
+    category            varchar(50),
+    total_revenue       float,                                    
+    total_cost          float,
+    gross_profit        float,                                   
+    gross_margin_pct    float,                                    
+    total_units_sold    int,                                  
+    total_orders        int, 
+    updated_at          timestamp_ntz default current_timestamp()
+)
+data_retention_time_in_days = 30;
+
+
+insert into global_data_mart.mart.fct_gross_margin (
+    store_id, store_name, store_city, category,
+    total_revenue, total_cost, gross_profit, gross_margin_pct,
+    total_units_sold, total_orders
+)
+with pos_agg as (
+    select store_id, store_name, store_city, category,
+        sum(total_amount) as total_revenue,
+        sum(quantity) as total_units_sold,
+        count(distinct transaction_id) as total_orders
+    from global_data_mart.setup_schema.pos_transactions
+    group by store_id, store_name, store_city, category
+),
+erp_agg as (
+    select store_id, category,
+        sum(total_cost) AS total_cost
+    from global_data_mart.setup_schema.erp_orders
+    group by store_id, category
+)
+select
+    p.store_id, p.store_name, p.store_city, p.category,
+    p.total_revenue,
+    e.total_cost,
+    p.total_revenue - e.total_cost AS gross_profit,
+    round((p.total_revenue - e.total_cost) / NULLIF(p.total_revenue, 0) * 100, 2) AS gross_margin_pct,
+    p.total_units_sold,
+    p.total_orders
+from pos_agg p
+left join erp_agg e
+    on p.store_id = e.store_id
+   and p.category = e.category;
+
+
+select * from global_data_mart.mart.fct_gross_margin 
+order by gross_margin_pct;
+
+-- fact table part - 2 per day data 
+
+create or replace table global_data_mart.mart.fact_daily_sales (
+    report_date date , 
+    store_id varchar(10),
+    store_name varchar(100),
+    store_city varchar(50),
+    store_region varchar(50),
+    category varchar(50),
+    total_revenue float,
+    total_units int,
+    total_transaction int,
+    avg_basket float,
+    unique_customer int,
+    updated_at timestamp_ntz default current_timestamp()
+)
+data_retention_time_in_days = 30;
+
+insert into global_data_mart.mart.fact_daily_sales
+select transaction_date,
+       store_id, store_name, store_city, store_region,
+       category,
+       round(sum(total_amount), 2) as total_revenue,
+       sum(quantity) as total_units,
+       count(distinct transaction_id) as total_transactions,
+       round(avg(total_amount), 2) as avg_basket,
+       count(distinct customer_id) as unique_customer,
+       current_timestamp()
+from global_data_mart.setup_schema.pos_transactions
+group by transaction_date, store_id, store_name, store_city, store_region, category;
+
+select * FROM global_data_mart.mart.fact_daily_sales 
+order by  report_date;
+
+-- Fact Table - 3
+
+create or replace table global_data_mart.stg_pos_transaction
+fct_gross_margin (
+    store_id varchar(10),
+    store_name varchar(50),
+    store_city varchar(50),
+    category varchar(50),
+    total_revenue float ,
+    total_cost float,
+    gross_profit float,
+    total_margin_act float,
+    total_unit_sold int,
+    total_orders int,
+    updated_at timestamp_ntz default current_timestamp()
+);
+
+-- CTE with join 
+
+with pos_agg as (
+    select store_id, store_name, store_city,
+        category,
+        round(sum(total_amount), 2) as total_revenue,
+        sum(quantity)                as total_units_sold,
+        round(avg(unit_price), 2)    as avg_selling_price
+    from global_data_mart.setup_schema.pos_transactions
+    where total_amount > 0
+    group by store_id, store_name, store_city, category
+),
+erp_units as (
+    select store_id, category,
+        round(avg(unit_cost), 4) as avg_unit_sold,
+        count(distinct order_id) as total_orders
+    from global_data_mart.setup_schema.erp_orders
+    where unit_cost > 0
+    group by store_id, category
+)
+select
+    p.store_id, p.store_name, p.store_city, p.category,
+    p.total_revenue, p.total_units_sold, p.avg_selling_price,
+    e.avg_unit_sold, e.total_orders
+from pos_agg p
+left join erp_units e
+    on p.store_id = e.store_id
+   and p.category = e.category;
