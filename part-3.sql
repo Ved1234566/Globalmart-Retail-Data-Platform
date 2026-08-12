@@ -12,8 +12,8 @@ create or replace table global_data_mart.setup_schema.test_1
     unit_price float,
     total_revenue float,
     total_revenue_discount float,
-    "year" int,
-    "month" int
+    year int,
+    month int
 );
 
 
@@ -60,14 +60,8 @@ select
     count(distinct transaction_id) as unique_transactions,
     round(sum(total_amount) / nullif(count(*), 0), 2) as avg_transaction_size
 from global_data_mart.setup_schema.pos_transactions
-group by
-    transaction_date,
-    store_id,
-    store_name,
-    store_city,
-    store_region,
-    category;
-
+group by transaction_date,store_id,store_name,
+    store_city,store_region,category;
 
 select *
 from global_data_mart.setup_schema.daily_store_category_revenue;
@@ -644,5 +638,3 @@ left join iot i
 select *
 from global_data_mart.mart.fct_sales_vs_iot
 order by report_date, store_id, category;
-
-
